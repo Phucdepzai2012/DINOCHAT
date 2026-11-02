@@ -133,6 +133,16 @@ svg{display:block;flex-shrink:0}
 .menu button{display:flex;gap:10px;align-items:center;width:100%;padding:10px 14px;font-size:14.5px;text-align:left}
 .menu button:hover{background:var(--hover)}.menu .red{color:#d32f2f}
 .pasterow{display:flex;gap:8px}.pasterow input{flex:1}
+.bub.att{padding:6px}
+.bub.att img{display:block;border-radius:6px;max-width:100%;cursor:zoom-in;background:#dfe6ef;object-fit:contain}
+.fcard{display:flex;gap:10px;align-items:center;min-width:220px;max-width:300px;color:inherit;text-decoration:none;padding:4px 6px}
+.fcard .fi{width:42px;height:42px;border-radius:8px;background:var(--blue);color:#fff;display:grid;place-items:center;flex-shrink:0}
+.fcard .fm{min-width:0;flex:1}.fcard .fn{font-size:14.5px;font-weight:600;word-break:break-all;line-height:1.3}
+.fcard .fs{font-size:12px;color:var(--sub);margin-top:2px}
+.fcard .fdl{color:var(--blue);flex-shrink:0}
+.fprog{height:4px;background:#d5dde8;border-radius:2px;margin-top:5px;overflow:hidden}.fprog i{display:block;height:100%;background:var(--blue)}
+.imgph{display:grid;place-items:center;background:#dfe6ef;border-radius:6px;color:var(--sub);font-size:12.5px;text-align:center;padding:8px}
+.dropz{outline:3px dashed var(--blue);outline-offset:-8px}
 .lb{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;place-items:center;z-index:30}.lb.show{display:grid}.lb img{max-width:94%;max-height:94%}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:rgba(20,30,45,.92);color:#fff;padding:10px 16px;border-radius:8px;font-size:13.5px;z-index:40;max-width:88%;text-align:center;display:none}
 @media(max-width:1099px){.info{display:none!important}}
@@ -188,6 +198,9 @@ const IC={
  groupplus:'<circle cx="8.5" cy="10" r="3.2"/><path d="M2 21a6.5 6.5 0 0 1 13 0"/><circle cx="16" cy="11.5" r="2.4"/><path d="M15.5 16a5 5 0 0 1 6 5"/><path d="M19 2.5v5.5M16.2 5.2h5.6"/>',
  undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
  dots:'<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>',
+ file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+ clip:'<path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.5 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7"/>',
+ download:'<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
  userplus:'<circle cx="9" cy="8" r="3.8"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6"/>',
@@ -338,11 +351,13 @@ function onData(id,d){
      if(d.gid){if(!g||!g.members.includes(id))return}else if(!S.contacts[id])return;
      const key=d.gid||id,ch=chatOf(key);
      sendTo(id,{t:'ack',id:d.id,gid:d.gid});
-     if(ch.msgs.some(m=>m.id===d.id))return;
+     const old=ch.msgs.find(m=>m.id===d.id);
+     if(old){if(old.att&&!old.att.ready&&!old.recalled)needFile(id,old.att.id,d.gid);return}
      const text=typeof d.text==='string'?d.text.slice(0,5000):'';
-     const img=okImg(d.img,2e6);
-     if(!text&&!img)return;
-     ch.msgs.push({id:d.id,from:'them',sender:id,text,img,t:Number(d.t0)||now(),read:false,seenSent:false});
+     const img=okImg(d.img,2e6),att=cleanAtt(d.att);
+     if(!text&&!img&&!att)return;
+     ch.msgs.push({id:d.id,from:'them',sender:id,text,img,att,t:Number(d.t0)||now(),read:false,seenSent:false});
+     if(att)needFile(id,att.id,d.gid);
      if(typingMap[key])delete typingMap[key][id];
      if(cur===key&&visible())markRead(key);else{ch.unread++;beep()}
      save();refreshAll();break}
@@ -378,11 +393,13 @@ function onData(id,d){
      if(!ex){toast('Bạn được thêm vào nhóm "'+S.groups[g.id].name+'"');if(cur!==g.id)ch.unread++}
      members.forEach(u=>connectTo(u));
      save();refreshAll();break}
+   case 'fneed':{if(typeof d.aid==='string')streamFile(id,d.aid);break}
+   case 'fchunk':{onChunk(id,d);break}
    case 'recall':{ // người gửi thu hồi → sửa bản lưu trên máy mình
      if(typeof d.id!=='string')return;
      if(d.gid){const g=S.groups[d.gid];if(!g||!g.members.includes(id))return}else if(!S.contacts[id])return;
      const key=d.gid||id,m=chatOf(key).msgs.find(z=>z.id===d.id&&z.from==='them'&&(z.sender||key)===id);
-     if(m){m.recalled=true;m.text='';m.img=null;save();refreshAll()}
+     if(m){dropAtt(m);m.recalled=true;m.text='';m.img=null;m.att=null;save();refreshAll()}
      break}
    case 'gleave':{
      const g=S.groups[d.gid];if(!g||!g.members.includes(id))return;
@@ -400,8 +417,10 @@ function flush(id){
     const g=S.groups[key],ch=S.chats[key];
     ch.msgs.forEach(m=>{
       if(m.from!=='me'||m.recalled)return;
-      if(g){if(g.members.includes(id)&&!(m.acks||[]).includes(id))sendTo(id,{t:'msg',id:m.id,text:m.text,img:m.img,t0:m.t,gid:key})}
-      else if(key===id&&m.status==='sent')sendTo(id,{t:'msg',id:m.id,text:m.text,img:m.img,t0:m.t})});
+      if(g){if(g.members.includes(id)&&!(m.acks||[]).includes(id))sendTo(id,wireMsg(m,key))}
+      else if(key===id&&m.status==='sent')sendTo(id,wireMsg(m))});
+    // xin lại file còn dang dở từ người này
+    ch.msgs.forEach(m=>{if(m.from==='them'&&(m.sender||key)===id&&m.att&&!m.att.ready&&!m.recalled)needFile(id,m.att.id,g?key:undefined)});
     if(S.settings.seen)sendSeenFor(key);
   });
 }
@@ -425,19 +444,98 @@ function sendMsg(partial){
   const m={id:now().toString(36)+Math.random().toString(36).slice(2,7),from:'me',t:now(),status:'sent',text:'',img:null,...partial};
   if(g){m.acks=[];m.seenBy=[]}
   chatOf(cur).msgs.push(m);save();
-  recipients(cur).forEach(u=>{if(!sendTo(u,{t:'msg',id:m.id,text:m.text,img:m.img,t0:m.t,gid:g?cur:undefined}))connectTo(u)});
+  recipients(cur).forEach(u=>{if(!sendTo(u,wireMsg(m,g?cur:undefined)))connectTo(u)});
   stopTyping();refreshAll();
 }
 function sendText(){const ta=$('#ta');const v=ta.value.trim();if(!v)return;ta.value='';ta.style.height='auto';updSendBtn();sendMsg({text:v});ta.focus()}
-function sendImage(file){
-  const r=new FileReader();
-  r.onload=()=>{const im=new Image();im.onload=()=>{
-    const k=Math.min(1,800/Math.max(im.width,im.height));
-    const cv=document.createElement('canvas');cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);
-    cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
-    sendMsg({img:cv.toDataURL('image/jpeg',.75)});
-  };im.onerror=()=>toast('Không đọc được ảnh');im.src=r.result};
-  r.readAsDataURL(file);
+/* ---- file & ảnh: lưu trong IndexedDB của trình duyệt, truyền theo từng mảnh nhỏ ---- */
+const MAXFILE=15*1024*1024,CHUNK=12288;
+const memBlobs={},attUrl={},parts={},streaming={};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let dbp=null;
+function idb(){return dbp||(dbp=new Promise((res,rej)=>{try{const r=indexedDB.open('dino_files'+KEY,1);r.onupgradeneeded=()=>r.result.createObjectStore('f');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}}))}
+function idbPut(k,b){memBlobs[k]=b;return idb().then(db=>new Promise((res,rej)=>{const t=db.transaction('f','readwrite');t.objectStore('f').put(b,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})).catch(()=>{})}
+function getBlob(k){if(memBlobs[k])return Promise.resolve(memBlobs[k]);
+  return idb().then(db=>new Promise((res,rej)=>{const q=db.transaction('f').objectStore('f').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>rej(q.error)})).catch(()=>null)}
+function idbDel(k){delete memBlobs[k];if(attUrl[k]){try{URL.revokeObjectURL(attUrl[k])}catch(e){}delete attUrl[k]}
+  idb().then(db=>{db.transaction('f','readwrite').objectStore('f').delete(k)}).catch(()=>{})}
+const dropAtt=m=>{if(m&&m.att){idbDel(m.att.id);Object.keys(parts).forEach(p=>{if(p.endsWith(m.att.id))delete parts[p]})}};
+function urlOf(aid){if(attUrl[aid])return Promise.resolve(attUrl[aid]);
+  return getBlob(aid).then(b=>{if(!b)return null;return attUrl[aid]=URL.createObjectURL(b)})}
+const fmtSize=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
+const b64=u8=>btoa(String.fromCharCode.apply(null,u8));
+const attMeta=a=>a?{id:a.id,name:a.name,size:a.size,mime:a.mime,kind:a.kind,w:a.w,h:a.h}:undefined;
+const wireMsg=(m,gid)=>({t:'msg',id:m.id,text:m.text,img:m.img,att:attMeta(m.att),t0:m.t,gid});
+function cleanAtt(a){
+  if(!a||typeof a!=='object'||typeof a.id!=='string'||!/^[A-Za-z0-9]{1,40}$/.test(a.id))return null;
+  const size=Number(a.size);if(!(size>0)||size>MAXFILE)return null;
+  const mime=String(a.mime||'application/octet-stream').slice(0,100);
+  const isImg=/^image\/(png|jpe?g|gif|webp|bmp)$/.test(mime)&&a.kind==='image';
+  return{id:a.id,name:String(a.name||'file').slice(0,120),size,mime,kind:isImg?'image':'file',w:Math.min(+a.w||0,6000),h:Math.min(+a.h||0,6000),ready:false,prog:0};
+}
+function findAtt(sender,aid){
+  for(const key of Object.keys(S.chats)){const m=S.chats[key].msgs.find(z=>z.from==='them'&&(z.sender||key)===sender&&z.att&&z.att.id===aid);if(m)return{m,key}}
+  return null}
+async function streamFile(to,aid){
+  const k=to+aid;if(streaming[k])return;
+  // chỉ gửi file mà mình đã gửi cho người này
+  const ok=Object.keys(S.chats).some(key=>{const g=S.groups[key];if(g?!g.members.includes(to):key!==to)return false;return S.chats[key].msgs.some(m=>m.from==='me'&&!m.recalled&&m.att&&m.att.id===aid)});
+  if(!ok)return;
+  streaming[k]=1;
+  try{
+    const blob=await getBlob(aid);if(!blob)return;
+    const n=Math.max(1,Math.ceil(blob.size/CHUNK));
+    for(let i=0;i<n;i++){
+      let c=conns[to];if(!c||!c.open)break;
+      while(c.dataChannel&&c.dataChannel.bufferedAmount>512*1024){await sleep(40);c=conns[to];if(!c||!c.open)return}
+      const u8=new Uint8Array(await blob.slice(i*CHUNK,(i+1)*CHUNK).arrayBuffer());
+      if(!sendTo(to,{t:'fchunk',aid,i,n,d:b64(u8)}))break;
+    }
+  }finally{delete streaming[k]}
+}
+function needFile(from,aid,gid){sendTo(from,{t:'fneed',aid,gid})}
+function onChunk(id,d){
+  const aid=String(d.aid||''),i=d.i|0,n=d.n|0,f=findAtt(id,aid);
+  if(!f||f.m.att.ready)return;
+  if(n<1||n>1500||i<0||i>=n||typeof d.d!=='string'||d.d.length>20000)return;
+  const pk=id+aid;let p=parts[pk];if(!p||p.n!==n)p=parts[pk]={n,arr:new Array(n),got:0};
+  if(p.arr[i]===undefined){p.arr[i]=d.d;p.got++}
+  const att=f.m.att;att.prog=Math.round(p.got/p.n*100);
+  if(p.got===p.n){
+    delete parts[pk];
+    try{
+      const bytes=p.arr.map(s=>{const bin=atob(s),u=new Uint8Array(bin.length);for(let j=0;j<bin.length;j++)u[j]=bin.charCodeAt(j);return u});
+      const blob=new Blob(bytes,{type:att.kind==='image'?att.mime:'application/octet-stream'});
+      idbPut(att.id,blob).then(()=>{att.ready=true;save();refreshAll()});
+    }catch(e){delete parts[pk];needFile(id,aid,f.key in S.groups?f.key:undefined)}
+  }else if(i%12===0)refreshAll();
+}
+function resizeImage(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file),im=new Image();
+    im.onload=()=>{
+      URL.revokeObjectURL(url);
+      const w0=im.naturalWidth,h0=im.naturalHeight;
+      if(file.type==='image/gif'&&file.size<5e6)return res({blob:file,w:w0,h:h0,mime:file.type});
+      const k=Math.min(1,1600/Math.max(w0,h0)),w=Math.round(w0*k),h=Math.round(h0*k);
+      const cv=document.createElement('canvas');cv.width=w;cv.height=h;const cx=cv.getContext('2d');
+      cx.fillStyle='#fff';cx.fillRect(0,0,w,h);cx.drawImage(im,0,0,w,h);
+      cv.toBlob(b=>b?res({blob:b,w,h,mime:'image/jpeg'}):rej(new Error('toBlob')),'image/jpeg',.82);
+    };
+    im.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('img'))};im.src=url;
+  });
+}
+async function sendAttachment(file){
+  if(!cur||!file)return;
+  if(file.size>MAXFILE)return toast('"'+file.name+'" lớn hơn 15 MB, không gửi được');
+  let blob=file,kind='file',w=0,h=0,mime=file.type||'application/octet-stream',name=file.name||'tệp';
+  if(/^image\/(png|jpe?g|gif|webp|bmp)$/.test(mime)){
+    try{const r=await resizeImage(file);blob=r.blob;w=r.w;h=r.h;mime=r.mime;kind='image';if(mime==='image/jpeg'&&!/\.jpe?g$/i.test(name))name=name.replace(/\.[^.]+$/,'')+'.jpg'}
+    catch(e){return toast('Không đọc được ảnh này')}
+  }
+  const aid='f'+now().toString(36)+Math.random().toString(36).slice(2,8);
+  await idbPut(aid,blob);
+  sendMsg({text:'',att:{id:aid,name,size:blob.size,mime,kind,w,h,ready:true}});
 }
 function sendTypingState(on){if(!cur)return;const gid=S.groups[cur]?cur:undefined;recipients(cur).forEach(u=>sendTo(u,{t:'typing',on,gid}))}
 function onType(){
@@ -456,7 +554,7 @@ function preview(m,key){
   if(!m)return S.groups[key]?'Nhóm mới được tạo':'Hai bạn đã là bạn bè trên DINO chat';
   if(m.from==='sys')return m.text;
   if(m.recalled)return m.from==='me'?'Bạn đã thu hồi một tin nhắn':'Tin nhắn đã được thu hồi';
-  const body=m.img?'[Hình ảnh]':m.text;
+  const body=m.att?(m.att.kind==='image'?'[Hình ảnh]':'[File] '+m.att.name):m.img?'[Hình ảnh]':m.text;
   if(m.from==='me')return 'Bạn: '+body;
   return S.groups[key]?prof(m.sender,key).name.split(' ').slice(-1)[0]+': '+body:body}
 function totalUnread(){return Object.values(S.chats).reduce((a,c)=>a+(c.unread||0),0)}
@@ -529,7 +627,7 @@ function buildChat(){
      <button class="ib" id="btnInfo" title="Thông tin hội thoại">${ic('panel',21)}</button></div>
    <div class="msgs" id="msgs"></div>
    <div class="cmp"><div class="emo" id="emo">${EMOJIS.map(x=>`<button type="button">${x}</button>`).join('')}</div>
-     <div class="tools"><button id="bEmo" title="Biểu tượng cảm xúc">${ic('smile',21)}</button><button id="bImg" title="Gửi hình ảnh">${ic('image',21)}</button><input type="file" id="file" accept="image/*" hidden></div>
+     <div class="tools"><button id="bEmo" title="Biểu tượng cảm xúc">${ic('smile',21)}</button><button id="bImg" title="Gửi hình ảnh">${ic('image',21)}</button><button id="bFile" title="Gửi file (tối đa 15 MB)">${ic('clip',21)}</button><input type="file" id="file" accept="image/*" multiple hidden><input type="file" id="file2" multiple hidden></div>
      <div class="inp"><textarea id="ta" rows="1" placeholder="Nhập tin nhắn tới ${esc(e.name)}"></textarea><button class="sendb" id="sendb"></button></div></div>
   </div><div class="info ${infoOpen?'show':''}" id="info"></div>`;
   $('#back').onclick=closeChat;
@@ -541,7 +639,10 @@ function buildChat(){
   $('#bEmo').onclick=ev=>{ev.stopPropagation();$('#emo').classList.toggle('show')};
   $('#emo').onclick=ev=>{if(ev.target.tagName==='BUTTON'){ta.value+=ev.target.textContent;onType();ta.focus()}};
   $('#bImg').onclick=()=>$('#file').click();
-  $('#file').onchange=ev=>{const f=ev.target.files[0];if(f)sendImage(f);ev.target.value=''};
+  $('#bFile').onclick=()=>$('#file2').click();
+  const onFiles=ev=>{const fs=[...ev.target.files];ev.target.value='';(async()=>{for(const f of fs)await sendAttachment(f)})()};
+  $('#file').onchange=onFiles;$('#file2').onchange=onFiles;
+  ta.onpaste=ev=>{const fs=[...((ev.clipboardData||{}).files||[])];if(fs.length){ev.preventDefault();(async()=>{for(const f of fs)await sendAttachment(f)})()}};
   updSendBtn();refreshHeader();renderMsgs();renderInfo();
 }
 function toggle(k){
@@ -588,19 +689,38 @@ function renderMsgs(){
     const same=o=>o&&o.from===m.from&&(o.sender||'')===(m.sender||'');
     const newGroup=!prev||!same(prev)||m.t-prev.t>120000||dayLabel(prev.t)!==d;
     const endGroup=!next||!same(next)||next.t-m.t>120000||dayLabel(next.t)!==d;
-    const big=!m.recalled&&!m.img&&onlyEmoji(m.text);
+    const big=!m.recalled&&!m.img&&!m.att&&onlyEmoji(m.text);
     const p=prof(sid,cur);
     const nameTag=(e.group&&!me&&newGroup)?`<span class="sn" style="color:${p.color}">${esc(p.name)}</span>`:'';
-    const body=m.recalled?(me?'Bạn đã thu hồi một tin nhắn':'Tin nhắn đã được thu hồi'):(m.img?`<img src="${m.img}" alt="ảnh" data-lb="1">`:linkify(m.text));
+    const body=m.recalled?(me?'Bạn đã thu hồi một tin nhắn':'Tin nhắn đã được thu hồi'):(m.att?attHtml(m):m.img?`<img src="${m.img}" alt="ảnh" data-lb="1">`:linkify(m.text));
     const mbtn=`<button class="mb" data-mid="${m.id}" title="Tuỳ chọn">${ic('dots',18,2.4)}</button>`;
     html+=`<div class="row ${me?'me':''} ${newGroup?'gap':''}">${me?mbtn:(endGroup?av(p.name,p.color,32,false,p.avatar):'<div class="sp30"></div>')}
-      <div class="bub ${m.recalled?'rec':''} ${m.img&&!m.recalled?'img':''} ${big?'big':''}" data-mid="${m.id}">${big?'':nameTag}${body}${big||!endGroup?'':`<span class="ts">${hm(m.t)}</span>`}</div>${me?'':mbtn}</div>`;
+      <div class="bub ${m.recalled?'rec':''} ${m.img&&!m.recalled?'img':''} ${m.att&&!m.recalled?'att':''} ${big?'big':''}" data-mid="${m.id}">${big?'':nameTag}${body}${big||!endGroup?'':`<span class="ts">${hm(m.t)}</span>`}</div>${me?'':mbtn}</div>`;
     if(me&&lastMine&&m.id===lastMine.id){const s=statusOf(m);html+=`<div class="st ${s.cls}">${s.ic}<span>${s.t}</span></div>`}
   });
   const tn=typingNames(cur);
   if(tn.length)html+=`<div class="row gap"><div class="sp30"></div><div class="bub"><span class="tdots"><i></i><i></i><i></i></span></div></div>`;
   box.innerHTML=html;
-  if(near||!box.dataset.init){box.scrollTop=box.scrollHeight;box.dataset.init=1}
+  const stick=near||!box.dataset.init;
+  if(stick){box.scrollTop=box.scrollHeight;box.dataset.init=1}
+  box.querySelectorAll('img[data-att]').forEach(el=>{
+    el.onload=()=>{if(stick)box.scrollTop=box.scrollHeight};
+    if(!el.getAttribute('src'))urlOf(el.dataset.att).then(u=>{if(u)el.src=u;else{const d=document.createElement('div');d.className='imgph';d.style.cssText=el.getAttribute('style');d.textContent='Ảnh không còn trên máy này';el.replaceWith(d)}});
+  });
+  box.querySelectorAll('a[data-fatt]').forEach(el=>{
+    if(el.getAttribute('href')==='#')urlOf(el.dataset.fatt).then(u=>{if(u)el.href=u;else{el.removeAttribute('download');const s=el.querySelector('.fs');if(s)s.textContent+=' · tệp không còn trên máy này'}});
+  });
+}
+function attHtml(m){
+  const a=m.att,ready=m.from==='me'||a.ready,pr=a.prog||0;
+  if(a.kind==='image'){
+    const w=Math.min(a.w||260,300),st=a.w&&a.h?`width:${w}px;aspect-ratio:${a.w}/${a.h}`:'width:220px;height:160px';
+    if(!ready)return `<div class="imgph" style="${st}">Đang nhận ảnh… ${pr}%</div>`;
+    return `<img data-att="${a.id}" data-lb="1" alt="ảnh" style="${st}" ${attUrl[a.id]?`src="${attUrl[a.id]}"`:''}>`;
+  }
+  const inner=`<div class="fi">${ic('file',22)}</div><div class="fm"><div class="fn">${esc(a.name)}</div><div class="fs">${ready?fmtSize(a.size):'Đang nhận… '+pr+'% · '+fmtSize(a.size)}</div>${ready?'':`<div class="fprog"><i style="width:${pr}%"></i></div>`}</div>`;
+  if(!ready)return `<div class="fcard">${inner}</div>`;
+  return `<a class="fcard" data-fatt="${a.id}" download="${esc(a.name)}" href="${attUrl[a.id]||'#'}">${inner}<span class="fdl">${ic('download',20)}</span></a>`;
 }
 function renderInfo(){
   const p=$('#info');if(!p||!cur)return;const e=ent(cur);if(!e)return;
@@ -731,7 +851,7 @@ function drawMe(){$('#railMe').innerHTML=av(S.me.name,S.me.color,46,true,S.me.av
 /* ================= thu hồi / menu tin nhắn ================= */
 function recallMsg(key,mid){
   const m=chatOf(key).msgs.find(z=>z.id===mid&&z.from==='me');if(!m||m.recalled)return;
-  m.recalled=true;m.text='';m.img=null;save();
+  dropAtt(m);m.recalled=true;m.text='';m.img=null;m.att=null;save();
   recipients(key).forEach(u=>sendCtl(u,{t:'recall',id:mid,gid:S.groups[key]?key:undefined})); // offline → tự gửi khi họ online lại
   toast('Đã thu hồi tin nhắn');refreshAll();
 }
@@ -757,7 +877,7 @@ document.addEventListener('click',e=>{
   if(mi){const a=mi.dataset.mact,mid=mi.dataset.mid;closeMenu();const m=cur&&chatOf(cur).msgs.find(z=>z.id===mid);
     if(a==='copy'&&m)copyText(m.text).then(ok=>toast(ok?'Đã sao chép tin nhắn':'Không sao chép được'));
     if(a==='recall'&&cur&&confirm('Thu hồi tin nhắn này? Tin sẽ bị xoá với tất cả mọi người.'))recallMsg(cur,mid);
-    if(a==='delme'&&m){chatOf(cur).msgs=chatOf(cur).msgs.filter(z=>z.id!==mid);save();refreshAll()}
+    if(a==='delme'&&m){dropAtt(m);chatOf(cur).msgs=chatOf(cur).msgs.filter(z=>z.id!==mid);save();refreshAll()}
     return}
   const mb=t.closest('.mb');
   if(mb){const r=mb.getBoundingClientRect();msgMenu(mb.dataset.mid,r.left,r.bottom+4);e.stopPropagation();return}
@@ -768,19 +888,23 @@ document.addEventListener('click',e=>{
   if(a){const k=a.dataset.act,g=S.groups[cur];
     if(k==='add')addModal();
     if(k==='newgroup')groupModal();
-    if(k==='clear'&&cur&&confirm('Xoá toàn bộ lịch sử trò chuyện này trên máy của bạn?')){chatOf(cur).msgs=[];chatOf(cur).unread=0;save();refreshAll()}
-    if(k==='unfriend'&&cur&&confirm('Xoá bạn này và toàn bộ tin nhắn?')){const id=cur;delete S.contacts[id];delete S.chats[id];if(!allPeers().includes(id)){try{conns[id]&&conns[id].close()}catch(_){}delete conns[id]}save();closeChat()}
+    if(k==='clear'&&cur&&confirm('Xoá toàn bộ lịch sử trò chuyện này trên máy của bạn?')){chatOf(cur).msgs.forEach(dropAtt);chatOf(cur).msgs=[];chatOf(cur).unread=0;save();refreshAll()}
+    if(k==='unfriend'&&cur&&confirm('Xoá bạn này và toàn bộ tin nhắn?')){const id=cur;chatOf(id).msgs.forEach(dropAtt);delete S.contacts[id];delete S.chats[id];if(!allPeers().includes(id)){try{conns[id]&&conns[id].close()}catch(_){}delete conns[id]}save();closeChat()}
     if(k==='gavatar'&&g)pickImage(u=>{g.avatar=u;updateGroup(g,'Bạn đã đổi ảnh nhóm',S.me.name+' đã đổi ảnh nhóm')});
     if(k==='grename'&&g){const n=(prompt('Tên nhóm mới:',g.name)||'').trim().slice(0,40);if(n&&n!==g.name){g.name=n;updateGroup(g,'Bạn đã đổi tên nhóm thành "'+n+'"',S.me.name+' đã đổi tên nhóm thành "'+n+'"')}}
     if(k==='gadd')addMembersModal();
     if(k==='gleave'&&g&&confirm('Rời khỏi nhóm "'+g.name+'"? Bạn sẽ không nhận được tin nhắn của nhóm nữa.')){
-      const id=cur;recipients(id).forEach(u=>sendCtl(u,{t:'gleave',gid:id}));delete S.groups[id];delete S.chats[id];save();closeChat()}
+      const id=cur;recipients(id).forEach(u=>sendCtl(u,{t:'gleave',gid:id}));chatOf(id).msgs.forEach(dropAtt);delete S.groups[id];delete S.chats[id];save();closeChat()}
   }
   const sw=t.closest('[data-sw]');if(sw)toggle(sw.dataset.sw);
   const nav=t.closest('[data-nav]');
   if(nav){const k=nav.dataset.nav;if(k==='me')settingsModal();else{tab=k;renderList()}}
 });
 $('#lb').onclick=()=>$('#lb').classList.remove('show');
+const chatEl=$('#chat');
+chatEl.addEventListener('dragover',e=>{if(cur&&e.dataTransfer&&[...e.dataTransfer.types].includes('Files')){e.preventDefault();chatEl.classList.add('dropz')}});
+chatEl.addEventListener('dragleave',e=>{if(e.target===chatEl||!chatEl.contains(e.relatedTarget))chatEl.classList.remove('dropz')});
+chatEl.addEventListener('drop',e=>{chatEl.classList.remove('dropz');if(!cur||!e.dataTransfer||!e.dataTransfer.files.length)return;e.preventDefault();const fs=[...e.dataTransfer.files];(async()=>{for(const f of fs)await sendAttachment(f)})()});
 $('#chats').onclick=e=>{if(e.target.closest('[data-act]'))return;const it=e.target.closest('.ci');if(it)openChat(it.dataset.id)};
 $('#q').oninput=renderList;
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;filter=b.dataset.f;[...$('#tabs').children].forEach(x=>x.classList.toggle('on',x===b));renderList()};
